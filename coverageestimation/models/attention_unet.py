@@ -1,6 +1,6 @@
-from base_model import BaseTensorCNN
+import torch
 import torch.nn as nn
-
+from base_model import BaseTensorCNN
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -55,65 +55,68 @@ class UpConv(nn.Module):
     def forward(self, x):
         x = self.up(x)
         return x
-
+    
+    
 class AttentionUNet(BaseTensorCNN):
     def __init__(self, in_channels=2, out_channels=1):
-        super(AttentionUNet, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        super(AttentionUNet, self).__init__(in_channels,out_channels)
 
     def _create_model(self):
-        # Encoder
-        encoder1 = ConvBlock(self.in_channels, 64)
-        encoder2 = ConvBlock(64, 128)
-        encoder3 = ConvBlock(128, 256)
-        encoder4 = ConvBlock(256, 512)
-
-        pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        bottleneck = ConvBlock(512, 1024)
-
-        # Decoder
-        upconv4 = UpConv(1024, 512)
-        attention4 = AttentionBlock(F_g=512, F_l=512, F_int=256)
-        decoder4 = ConvBlock(1024, 512)
-
-        upconv3 = UpConv(512, 256)
-        attention3 = AttentionBlock(F_g=256, F_l=256, F_int=128)
-        decoder3 = ConvBlock(512, 256)
-
-        upconv2 = UpConv(256, 128)
-        attention2 = AttentionBlock(F_g=128, F_l=128, F_int=64)
-        decoder2 = ConvBlock(256, 128)
-
-        upconv1 = UpConv(128, 64)
-        attention1 = AttentionBlock(F_g=64, F_l=64, F_int=32)
-        decoder1 = ConvBlock(128, 64)
-
-        final_conv = nn.Conv2d(64, self.out_channels, kernel_size=1, stride=1, padding=0)
-
-        # Assemble model
+        
         return nn.Sequential(
-            encoder1,
-            pool,
-            encoder2,
-            pool,
-            encoder3,
-            pool,
-            encoder4,
-            pool,
-            bottleneck,
-            upconv4,
-            attention4,
-            decoder4,
-            upconv3,
-            attention3,
-            decoder3,
-            upconv2,
-            attention2,
-            decoder2,
-            upconv1,
-            attention1,
-            decoder1,
-            final_conv
+            nn.ModuleDict({
+                'encoder1': ConvBlock(self.input_channels, 64),
+                'encoder2': ConvBlock(64, 128),
+                'encoder3': ConvBlock(128, 256),
+                'encoder4': ConvBlock(256, 512),
+                'pool': nn.MaxPool2d(kernel_size=2, stride=2),
+                'bottleneck': ConvBlock(512, 1024),
+                'upconv4': UpConv(1024, 512),
+                'attention4': AttentionBlock(F_g=512, F_l=512, F_int=256),
+                'decoder4': ConvBlock(1024, 512),
+                'upconv3': UpConv(512, 256),
+                'attention3': AttentionBlock(F_g=256, F_l=256, F_int=128),
+                'decoder3': ConvBlock(512, 256),
+                'upconv2': UpConv(256, 128),
+                'attention2': AttentionBlock(F_g=128, F_l=128, F_int=64),
+                'decoder2': ConvBlock(256, 128),
+                'upconv1': UpConv(128, 64),
+                'attention1': AttentionBlock(F_g=64, F_l=64, F_int=32),
+                'decoder1': ConvBlock(128, 64),
+                'final_conv': nn.Conv2d(64, self.output_channels, kernel_size=1, stride=1, padding=0)
+            })
         )
+
+    # def forward(self, x):
+    #     # Encoder
+    #     enc1 = self.encoder1(x)
+    #     enc2 = self.encoder2(self.pool(enc1))
+    #     enc3 = self.encoder3(self.pool(enc2))
+    #     enc4 = self.encoder4(self.pool(enc3))
+
+    #     # Bottleneck
+    #     bottleneck = self.bottleneck(self.pool(enc4))
+
+    #     # Decoder
+    #     dec4 = self.upconv4(bottleneck)
+    #     dec4 = torch.cat((self.attention4(dec4, enc4), dec4), dim=1)
+    #     dec4 = self.decoder4(dec4)
+
+    #     dec3 = self.upconv3(dec4)
+    #     dec3 = torch.cat((self.attention3(dec3, enc3), dec3), dim=1)
+    #     dec3 = self.decoder3(dec3)
+
+    #     dec2 = self.upconv2(dec3)
+    #     dec2 = torch.cat((self.attention2(dec2, enc2), dec2), dim=1)
+    #     dec2 = self.decoder2(dec2)
+
+    #     dec1 = self.upconv1(dec2)
+    #     dec1 = torch.cat((self.attention1(dec1, enc1), dec1), dim=1)
+    #     dec1 = self.decoder1(dec1)
+
+    #     out = self.final_conv(dec1)
+
+    #     return out
+    
+    # def get_model_name(self):
+    #     return "AttentionUNet"
