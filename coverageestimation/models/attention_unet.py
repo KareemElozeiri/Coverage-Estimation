@@ -87,36 +87,36 @@ class AttentionUNet(BaseTensorCNN):
             })
         )
 
-    # def forward(self, x):
-    #     # Encoder
-    #     enc1 = self.encoder1(x)
-    #     enc2 = self.encoder2(self.pool(enc1))
-    #     enc3 = self.encoder3(self.pool(enc2))
-    #     enc4 = self.encoder4(self.pool(enc3))
+    def forward(self, x):
+        # Encoder
+        enc1 = self.model['encoder1'](x)
+        enc2 = self.model['encoder2'](self.model['pool'](enc1))
+        enc3 = self.model['encoder3'](self.model['pool'](enc2))
+        enc4 = self.model['encoder4'](self.model['pool'](enc3))
 
-    #     # Bottleneck
-    #     bottleneck = self.bottleneck(self.pool(enc4))
+        # Bottleneck
+        bottleneck = self.model['bottleneck'](self.model['pool'](enc4))
 
-    #     # Decoder
-    #     dec4 = self.upconv4(bottleneck)
-    #     dec4 = torch.cat((self.attention4(dec4, enc4), dec4), dim=1)
-    #     dec4 = self.decoder4(dec4)
+        # Decoder
+        dec4 = self.model['upconv4'](bottleneck)
+        dec4 = torch.cat((self.model['attention4'](dec4, enc4), dec4), dim=1)
+        dec4 = self.model['decoder4'](dec4)
 
-    #     dec3 = self.upconv3(dec4)
-    #     dec3 = torch.cat((self.attention3(dec3, enc3), dec3), dim=1)
-    #     dec3 = self.decoder3(dec3)
+        dec3 = self.model['upconv3'](dec4)
+        dec3 = torch.cat((self.model['attention3'](dec3, enc3), dec3), dim=1)
+        dec3 = self.model['decoder3'](dec3)
 
-    #     dec2 = self.upconv2(dec3)
-    #     dec2 = torch.cat((self.attention2(dec2, enc2), dec2), dim=1)
-    #     dec2 = self.decoder2(dec2)
+        dec2 = self.model['upconv2'](dec3)
+        dec2 = torch.cat((self.model['attention2'](dec2, enc2), dec2), dim=1)
+        dec2 = self.model['decoder2'](dec2)
 
-    #     dec1 = self.upconv1(dec2)
-    #     dec1 = torch.cat((self.attention1(dec1, enc1), dec1), dim=1)
-    #     dec1 = self.decoder1(dec1)
+        dec1 = self.model['upconv1'](dec2)
+        dec1 = torch.cat((self.model['attention1'](dec1, enc1), dec1), dim=1)
+        dec1 = self.model['decoder1'](dec1)
 
-    #     out = self.final_conv(dec1)
+        out = self.model['final_conv'](dec1)
 
-    #     return out
+        return out
     
-    # def get_model_name(self):
-    #     return "AttentionUNet"
+    def get_model_name(self):
+        return "AttentionUNet"
