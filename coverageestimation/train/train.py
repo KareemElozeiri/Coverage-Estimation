@@ -155,7 +155,7 @@ def train_model(model_class, train_loader, val_loader, n_trials=100, use_optuna=
         best_lr = 0.001
         best_optimizer = optim.Adam
     
-    final_model = model_class(input_channels=7, output_channels=1).to(device)
+    final_model = model_class(input_channels=6, output_channels=1).to(device)
     final_optimizer = best_optimizer(final_model.parameters(), lr=best_lr)
     final_scheduler = optim.lr_scheduler.ReduceLROnPlateau(final_optimizer, mode='min', factor=0.1, patience=5)
     
