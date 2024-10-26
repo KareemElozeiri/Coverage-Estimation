@@ -132,10 +132,9 @@ def objective(trial, model_class, train_loader, val_loader, device):
         early_stopping_patience=10
     )
     
-    # Train and return best validation loss
     return trainer.train()
 
-def train_model_with_optuna(model_class, train_loader, val_loader, n_trials=100, use_optuna=False):
+def train_model(model_class, train_loader, val_loader, n_trials=100, use_optuna=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if use_optuna:
