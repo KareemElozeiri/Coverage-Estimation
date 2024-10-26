@@ -134,7 +134,7 @@ def objective(trial, model_class, train_loader, val_loader, device):
     
     return trainer.train()
 
-def train_model(model_class, train_loader, val_loader, n_trials=100, use_optuna=False):
+def train_model(model_class, train_loader, val_loader, epochs=10, n_trials=100, use_optuna=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if use_optuna:
@@ -167,7 +167,7 @@ def train_model(model_class, train_loader, val_loader, n_trials=100, use_optuna=
         optimizer=final_optimizer,
         device=device,
         scheduler=final_scheduler,
-        num_epochs=100,
+        num_epochs=epochs,
         early_stopping_patience=10
     )
     
