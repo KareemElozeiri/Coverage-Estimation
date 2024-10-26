@@ -59,7 +59,7 @@ def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers
         transforms.ToTensor(),
     ])
 
-    dataset = CoverageMapDataset(xlsx_file==xlsx_file, root_dir=root_dir, transform=transform)
+    dataset = CoverageMapDataset(xlsx_file=xlsx_file, root_dir=root_dir, transform=transform)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     
     return dataloader
