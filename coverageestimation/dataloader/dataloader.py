@@ -6,8 +6,8 @@ from PIL import Image
 from torchvision import transforms
 
 class CoverageMapDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=None):
-        self.data_frame = pd.read_csv(csv_file)
+    def __init__(self, xlsx_file, root_dir, transform=None):
+        self.data_frame = pd.read_excel(xlsx_file)
         self.root_dir = root_dir
         self.transform = transform
 
@@ -54,7 +54,8 @@ class CoverageMapDataset(Dataset):
 
 def get_dataloader(csv_file, root_dir, batch_size=32, shuffle=True, num_workers=4):
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),  
+        transforms.Resize((256, 256)), 
+        transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
     ])
 
