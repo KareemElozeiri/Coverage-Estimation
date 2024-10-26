@@ -52,14 +52,14 @@ class CoverageMapDataset(Dataset):
 
         return input_tensor, coverage_map
 
-def get_dataloader(csv_file, root_dir, batch_size=32, shuffle=True, num_workers=4):
+def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4):
     transform = transforms.Compose([
         transforms.Resize((256, 256)), 
         transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
     ])
 
-    dataset = CoverageMapDataset(csv_file=csv_file, root_dir=root_dir, transform=transform)
+    dataset = CoverageMapDataset(xlsx_file==xlsx_file, root_dir=root_dir, transform=transform)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     
     return dataloader
