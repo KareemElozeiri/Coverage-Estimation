@@ -134,7 +134,7 @@ def objective(trial, model_class, train_loader, val_loader, device):
     
     return trainer.train()
 
-def train_model(model_class, train_loader, val_loader, epochs=10, n_trials=100, use_optuna=False):
+def train_model(model_class, train_loader, val_loader, in_channel=6, out_channel=1, epochs=10, n_trials=100, use_optuna=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if use_optuna:
@@ -155,7 +155,7 @@ def train_model(model_class, train_loader, val_loader, epochs=10, n_trials=100, 
         best_lr = 0.001
         best_optimizer = optim.Adam
     
-    final_model = model_class(input_channels=6, output_channels=1).to(device)
+    final_model = model_class(input_channels=in_channel, output_channels=out_channel).to(device)
     final_optimizer = best_optimizer(final_model.parameters(), lr=best_lr)
     final_scheduler = optim.lr_scheduler.ReduceLROnPlateau(final_optimizer, mode='min', factor=0.1, patience=5)
     
