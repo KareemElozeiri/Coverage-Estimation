@@ -25,8 +25,8 @@ class CoverageMapDataset(Dataset):
         transmitter_tilt_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 4])
         transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5])
         transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6])
-
-        coverage_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 7])
+        antenna_pattern_vertical_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 7])
+        coverage_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9])
 
         base_map = Image.open(base_map_path)
         frequency = Image.open(frequency_path)
@@ -35,6 +35,7 @@ class CoverageMapDataset(Dataset):
         transmitter_tilt = Image.open(transmitter_tilt_path)
         transmitter_locations = Image.open(transmitter_locations_path)
         transmitter_height = Image.open(transmitter_height_path)
+        antenna_pattern_vertical = Image.open(antenna_pattern_vertical_path)
         coverage_map = Image.open(coverage_map_path)
 
         if self.transform:
@@ -45,10 +46,11 @@ class CoverageMapDataset(Dataset):
             transmitter_tilt = self.transform(transmitter_tilt)
             transmitter_locations = self.transform(transmitter_locations)
             transmitter_height = self.transform(transmitter_height)
+            antenna_pattern_vertical = self.transform(antenna_pattern_vertical)
             coverage_map = self.transform(coverage_map)
 
         input_tensor = torch.cat((base_map, frequency, azimuth_angles, 
-                                  transmitter_tilt, transmitter_locations, transmitter_height), dim=0)
+                                  transmitter_tilt, transmitter_locations, transmitter_height, antenna_pattern_vertical), dim=0)
 
         return input_tensor, coverage_map
 
