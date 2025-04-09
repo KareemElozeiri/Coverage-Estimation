@@ -32,8 +32,6 @@ class Trainer:
         self.num_epochs = num_epochs
         self.early_stopping_patience = early_stopping_patience
         self.optimizer = optimizer
-        self.loss_type = loss_type
-        self.edge_weight = edge_weight
         
         # Set up loss function based on type
         if loss_type == "mse":
@@ -141,7 +139,7 @@ class Trainer:
         plt.savefig(plot_path)
         print(f"Loss plot saved to {plot_path}")
 
-def objective(trial, model_class, train_loader, val_loader, device, epochs):
+def objective(trial, model_class, train_loader, val_loader, device):
     # Sample hyperparameters
     lr = trial.suggest_loguniform('lr', 1e-5, 1e-1)
     optimizer_name = trial.suggest_categorical('optimizer', ['Adam', 'RMSprop', 'SGD'])
@@ -187,7 +185,7 @@ def objective(trial, model_class, train_loader, val_loader, device, epochs):
         optimizer=optimizer,
         device=device,
         scheduler=scheduler,
-        num_epochs=epochs,  # Reduced for quicker trials
+        num_epochs=50,  # Reduced for quicker trials
         early_stopping_patience=10,
         loss_type=loss_type,
         edge_weight=edge_weight,
@@ -199,7 +197,7 @@ def objective(trial, model_class, train_loader, val_loader, device, epochs):
     return trainer.train()
 
 def train_model(model_class, train_loader, val_loader, in_channel=7, out_channel=1, epochs=100, 
-                n_trials=50, use_optuna=True, opt_epochs=10, loss_type="edge_aware", edge_weight=1.0,
+                n_trials=50, use_optuna=True, loss_type="edge_aware", edge_weight=1.0,
                 smoothness_weight=0.1, tv_weight=0.1, ssim_weight=0.5):
     """
     Train a model with edge-preserving loss for regression tasks.
@@ -211,7 +209,7 @@ def train_model(model_class, train_loader, val_loader, in_channel=7, out_channel
     
     if use_optuna:
         study = optuna.create_study(direction='minimize')
-        study.optimize(lambda trial: objective(trial, model_class, train_loader, val_loader, device, opt_epochs), n_trials=n_trials)
+        study.optimize(lambda trial: objective(trial, model_class, train_loader, val_loader, device), n_trials=n_trials)
         
         print("Best trial:")
         trial = study.best_trial
