@@ -34,7 +34,7 @@ class Trainer:
             
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
-            loss = self.criterion(outputs, targets)
+            loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
             loss.backward()
             self.optimizer.step()
             
@@ -50,7 +50,7 @@ class Trainer:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
                 
                 outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
+                loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
                 
                 total_loss += loss.item()
         
