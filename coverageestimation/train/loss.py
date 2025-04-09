@@ -88,9 +88,9 @@ class TotalVariationRegressionLoss(nn.Module):
         
         # Calculate edge importance map (high at edges in target)
         sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
-                              dtype=targets.dtype, device=targets.device).view(1, 1, 3, 3)
+                            dtype=targets.dtype, device=targets.device).view(1, 1, 3, 3)
         sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
-                              dtype=targets.dtype, device=targets.device).view(1, 1, 3, 3)
+                            dtype=targets.dtype, device=targets.device).view(1, 1, 3, 3)
         
         # Get target gradients to identify where edges should be
         batch_size, channels, height, width = targets.shape
@@ -109,15 +109,18 @@ class TotalVariationRegressionLoss(nn.Module):
         diff_x = torch.abs(outputs[:, :, :, :-1] - outputs[:, :, :, 1:])
         diff_y = torch.abs(outputs[:, :, :-1, :] - outputs[:, :, 1:, :])
         
-        # Weight the TV loss to encourage sharp transitions at actual edges
-        # and smoothness elsewhere
+        # Ensure weight dimensions match diff dimensions explicitly
         weight_x = edge_weights[:, :, :, :-1]
         weight_y = edge_weights[:, :, :-1, :]
         
-        tv_loss = torch.mean(
-            (1 - weight_x) * diff_x + weight_x * (1 - diff_x) +
-            (1 - weight_y) * diff_y + weight_y * (1 - diff_y)
-        )
+        # Verify dimensions match before calculation
+        assert weight_x.shape == diff_x.shape, f"weight_x shape {weight_x.shape} != diff_x shape {diff_x.shape}"
+        assert weight_y.shape == diff_y.shape, f"weight_y shape {weight_y.shape} != diff_y shape {diff_y.shape}"
+        
+        # Compute TV loss component by component to avoid dimension issues
+        x_term = (1 - weight_x) * diff_x + weight_x * (1 - diff_x)
+        y_term = (1 - weight_y) * diff_y + weight_y * (1 - diff_y)
+        tv_loss = torch.mean(x_term + y_term)
         
         # Combined loss
         total_loss = mse_loss + self.tv_weight * tv_loss
