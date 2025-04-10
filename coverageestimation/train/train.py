@@ -37,11 +37,16 @@ class Trainer:
             
             # Handle RadioUNet's output format (it returns a list of two outputs)
             if isinstance(outputs, list):
-                # Use the second output (final output) for loss calculation
-                loss = self.criterion(outputs[1], targets)/self.criterion(targets, 0*targets)
+                # Use the appropriate output based on the phase
+                # In the RadioUNet class, the second output is always the one we want to use
+                output_to_use = outputs[1]
             else:
-                loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
+                output_to_use = outputs
                 
+            # Compute normalized loss
+            loss = self.criterion(output_to_use, targets)/self.criterion(targets, 0*targets)
+            
+            # Backpropagate
             loss.backward()
             self.optimizer.step()
             
@@ -60,10 +65,14 @@ class Trainer:
                 
                 # Handle RadioUNet's output format (it returns a list of two outputs)
                 if isinstance(outputs, list):
-                    # Use the second output (final output) for loss calculation
-                    loss = self.criterion(outputs[1], targets)/self.criterion(targets, 0*targets)
+                    # Use the appropriate output based on the phase
+                    # In the RadioUNet class, the second output is always the one we want to use
+                    output_to_use = outputs[1]
                 else:
-                    loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
+                    output_to_use = outputs
+                    
+                # Compute normalized loss
+                loss = self.criterion(output_to_use, targets)/self.criterion(targets, 0*targets)
                 
                 total_loss += loss.item()
         

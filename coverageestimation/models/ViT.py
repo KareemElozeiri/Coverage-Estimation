@@ -88,6 +88,10 @@ class ViTTensorToTensor(BaseTensorCNN):
         self.dropout = dropout
         super(ViTTensorToTensor, self).__init__(input_channels, output_channels)
         
+        # Initialize the positional embedding with sine-cosine positional encoding
+        with torch.no_grad():
+            self._init_pos_embed()
+        
     def _create_model(self):
         # Calculate number of patches
         assert self.image_size % self.patch_size == 0, "Image dimensions must be divisible by patch size"
@@ -123,14 +127,19 @@ class ViTTensorToTensor(BaseTensorCNN):
             nn.Conv2d(256, self.output_channels, kernel_size=1)
         )
         
-        # Initialize the positional embedding with sine-cosine positional encoding
-        with torch.no_grad():
-            self._init_pos_embed()
-        
-        return self
+        # Instead of returning self, create a dummy nn.Module that represents the "complete" model
+        # The actual forward pass will be handled by the forward method of this class
+        return nn.Identity()
     
     def _init_pos_embed(self):
         # Initialize positional embeddings with sinusoidal position encoding
+        # This needs to be called after pos_embed is defined in _create_model
+        if not hasattr(self, 'pos_embed'):
+            # Calculate number of patches
+            num_patches = (self.image_size // self.patch_size) ** 2
+            # Create pos_embed attribute if it doesn't exist yet
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, self.embed_dim))
+            
         position = torch.arange(0, self.pos_embed.shape[1]).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, self.embed_dim, 2) * -(np.log(10000.0) / self.embed_dim))
         pos_embed = torch.zeros_like(self.pos_embed[0])
