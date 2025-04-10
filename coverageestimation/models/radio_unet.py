@@ -26,67 +26,23 @@ class RadioUNet(BaseTensorCNN):
             phase: "firstU" or "secondU" - controls which part of the W-Net is trainable
         """
         self.phase = phase
+        # Initialize parent class first to avoid recursion issues
         super(RadioUNet, self).__init__(input_channels, output_channels)
         
     def _create_model(self):
-        # First U-Net (encoder-decoder)
-        # Encoder path
-        if self.input_channels <= 3:
-            self.layer00 = convrelu(self.input_channels, 6, 3, 1, 1) 
-            self.layer0 = convrelu(6, 40, 5, 2, 2) 
-        else:
-            self.layer00 = convrelu(self.input_channels, 10, 3, 1, 1) 
-            self.layer0 = convrelu(10, 40, 5, 2, 2) 
-         
-        self.layer1 = convrelu(40, 50, 5, 2, 2)  
-        self.layer10 = convrelu(50, 60, 5, 2, 1)  
-        self.layer2 = convrelu(60, 100, 5, 2, 2) 
-        self.layer20 = convrelu(100, 100, 3, 1, 1) 
-        self.layer3 = convrelu(100, 150, 5, 2, 2) 
-        self.layer4 = convrelu(150, 300, 5, 2, 2) 
-        self.layer5 = convrelu(300, 500, 5, 2, 2) 
+        """
+        Create the entire model architecture.
+        Returns self because the model is built directly in this class
+        rather than creating a separate model object.
+        """
+        # Instead of returning self, we'll return a simple identity module
+        # That makes BaseTensorCNN's forward call use our forward method
+        return nn.Identity()
         
-        # Decoder path with skip connections
-        self.conv_up5 = convreluT(500, 300, 4, 1)  
-        self.conv_up4 = convreluT(300+300, 150, 4, 1) 
-        self.conv_up3 = convreluT(150+150, 100, 4, 1) 
-        self.conv_up20 = convrelu(100+100, 100, 3, 1, 1) 
-        self.conv_up2 = convreluT(100+100, 60, 6, 2) 
-        self.conv_up10 = convrelu(60+60, 50, 5, 2, 1) 
-        self.conv_up1 = convreluT(50+50, 40, 6, 2)
-        self.conv_up0 = convreluT(40+40, 20, 6, 2)
+    def get_model_name(self):
+        """Return the name of the model"""
+        return f"RadioUNet-{self.phase}"
         
-        if self.input_channels <= 3:
-            self.conv_up00 = convrelu(20+6+self.input_channels, 20, 5, 2, 1)
-        else:
-            self.conv_up00 = convrelu(20+10+self.input_channels, 20, 5, 2, 1)
-            
-        self.conv_up000 = convrelu(20+self.input_channels, self.output_channels, 5, 2, 1)
-        
-        # Second U-Net (W part)
-        self.Wlayer00 = convrelu(self.input_channels+1, 20, 3, 1, 1) 
-        self.Wlayer0 = convrelu(20, 30, 5, 2, 2)  
-        self.Wlayer1 = convrelu(30, 40, 5, 2, 2)  
-        self.Wlayer10 = convrelu(40, 50, 5, 2, 1)  
-        self.Wlayer2 = convrelu(50, 60, 5, 2, 2) 
-        self.Wlayer20 = convrelu(60, 70, 3, 1, 1) 
-        self.Wlayer3 = convrelu(70, 90, 5, 2, 2) 
-        self.Wlayer4 = convrelu(90, 110, 5, 2, 2) 
-        self.Wlayer5 = convrelu(110, 150, 5, 2, 2) 
-        
-        self.Wconv_up5 = convreluT(150, 110, 4, 1)  
-        self.Wconv_up4 = convreluT(110+110, 90, 4, 1) 
-        self.Wconv_up3 = convreluT(90+90, 70, 4, 1) 
-        self.Wconv_up20 = convrelu(70+70, 60, 3, 1, 1) 
-        self.Wconv_up2 = convreluT(60+60, 50, 6, 2) 
-        self.Wconv_up10 = convrelu(50+50, 40, 5, 2, 1) 
-        self.Wconv_up1 = convreluT(40+40, 30, 6, 2)
-        self.Wconv_up0 = convreluT(30+30, 20, 6, 2) 
-        self.Wconv_up00 = convrelu(20+20+self.input_channels+1, 20, 5, 2, 1)
-        self.Wconv_up000 = convrelu(20+self.input_channels+1, self.output_channels, 5, 2, 1)
-        
-        return self
-
     def forward(self, x):
         """
         Forward pass of the RadioUNet model
@@ -99,6 +55,12 @@ class RadioUNet(BaseTensorCNN):
               - output1 is the output from the first U-Net
               - output2 is the final output from the W-Net
         """
+        # We override the parent's forward method, which would have called self.model(x)
+        # Create layers when the model is first run if they don't exist
+        if not hasattr(self, '_initialized_layers'):
+            self._init_layers()
+            self._initialized_layers = True
+            
         input0 = x[:, 0:self.input_channels, :, :]
         
         if self.phase == "firstU":
@@ -239,7 +201,61 @@ class RadioUNet(BaseTensorCNN):
             output2 = self.Wconv_up000(Wlayer000u)
             
         return [output1, output2]
-    
-    def get_model_name(self):
-        """Return the name of the model"""
-        return f"RadioUNet-{self.phase}"
+        
+    def _init_layers(self):
+        """Initialize all layers of the model"""
+        # First U-Net (encoder-decoder)
+        # Encoder path
+        if self.input_channels <= 3:
+            self.layer00 = convrelu(self.input_channels, 6, 3, 1, 1) 
+            self.layer0 = convrelu(6, 40, 5, 2, 2) 
+        else:
+            self.layer00 = convrelu(self.input_channels, 10, 3, 1, 1) 
+            self.layer0 = convrelu(10, 40, 5, 2, 2) 
+         
+        self.layer1 = convrelu(40, 50, 5, 2, 2)  
+        self.layer10 = convrelu(50, 60, 5, 2, 1)  
+        self.layer2 = convrelu(60, 100, 5, 2, 2) 
+        self.layer20 = convrelu(100, 100, 3, 1, 1) 
+        self.layer3 = convrelu(100, 150, 5, 2, 2) 
+        self.layer4 = convrelu(150, 300, 5, 2, 2) 
+        self.layer5 = convrelu(300, 500, 5, 2, 2) 
+        
+        # Decoder path with skip connections
+        self.conv_up5 = convreluT(500, 300, 4, 1)  
+        self.conv_up4 = convreluT(300+300, 150, 4, 1) 
+        self.conv_up3 = convreluT(150+150, 100, 4, 1) 
+        self.conv_up20 = convrelu(100+100, 100, 3, 1, 1) 
+        self.conv_up2 = convreluT(100+100, 60, 6, 2) 
+        self.conv_up10 = convrelu(60+60, 50, 5, 2, 1) 
+        self.conv_up1 = convreluT(50+50, 40, 6, 2)
+        self.conv_up0 = convreluT(40+40, 20, 6, 2)
+        
+        if self.input_channels <= 3:
+            self.conv_up00 = convrelu(20+6+self.input_channels, 20, 5, 2, 1)
+        else:
+            self.conv_up00 = convrelu(20+10+self.input_channels, 20, 5, 2, 1)
+            
+        self.conv_up000 = convrelu(20+self.input_channels, self.output_channels, 5, 2, 1)
+        
+        # Second U-Net (W part)
+        self.Wlayer00 = convrelu(self.input_channels+1, 20, 3, 1, 1) 
+        self.Wlayer0 = convrelu(20, 30, 5, 2, 2)  
+        self.Wlayer1 = convrelu(30, 40, 5, 2, 2)  
+        self.Wlayer10 = convrelu(40, 50, 5, 2, 1)  
+        self.Wlayer2 = convrelu(50, 60, 5, 2, 2) 
+        self.Wlayer20 = convrelu(60, 70, 3, 1, 1) 
+        self.Wlayer3 = convrelu(70, 90, 5, 2, 2) 
+        self.Wlayer4 = convrelu(90, 110, 5, 2, 2) 
+        self.Wlayer5 = convrelu(110, 150, 5, 2, 2) 
+        
+        self.Wconv_up5 = convreluT(150, 110, 4, 1)  
+        self.Wconv_up4 = convreluT(110+110, 90, 4, 1) 
+        self.Wconv_up3 = convreluT(90+90, 70, 4, 1) 
+        self.Wconv_up20 = convrelu(70+70, 60, 3, 1, 1) 
+        self.Wconv_up2 = convreluT(60+60, 50, 6, 2) 
+        self.Wconv_up10 = convrelu(50+50, 40, 5, 2, 1) 
+        self.Wconv_up1 = convreluT(40+40, 30, 6, 2)
+        self.Wconv_up0 = convreluT(30+30, 20, 6, 2) 
+        self.Wconv_up00 = convrelu(20+20+self.input_channels+1, 20, 5, 2, 1)
+        self.Wconv_up000 = convrelu(20+self.input_channels+1, self.output_channels, 5, 2, 1)
