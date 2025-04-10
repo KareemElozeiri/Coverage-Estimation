@@ -125,44 +125,42 @@ class ViTTensorToTensor(BaseTensorCNN):
             nn.ReLU(inplace=True),
             nn.Conv2d(256, self.output_channels, kernel_size=1)
         )
-        
-        # Instead of returning self, create a dummy nn.Module that represents the "complete" model
-        # The actual forward pass will be handled by the forward method of this class
+    
         return nn.Identity()
     
     def _init_pos_embed(self):
-        # Initialize positional embeddings with sinusoidal position encoding
-        # This is called after pos_embed is defined in _create_model
         num_patches = (self.image_size // self.patch_size) ** 2
-        num_positions = num_patches + 1  # Add 1 for cls token
+        num_positions = num_patches + 1
         
-        position = torch.arange(0, num_positions).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, self.embed_dim, 2) * -(np.log(10000.0) / self.embed_dim))
-        pos_embed = torch.zeros(num_positions, self.embed_dim)
+        # Get device from existing pos_embed parameter
+        device = self.pos_embed.device
+        
+        position = torch.arange(0, num_positions, device=device).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.embed_dim, 2, device=device) * -(np.log(10000.0) / self.embed_dim))
+        pos_embed = torch.zeros(num_positions, self.embed_dim, device=device)
         pos_embed[:, 0::2] = torch.sin(position * div_term)
         pos_embed[:, 1::2] = torch.cos(position * div_term)
         self.pos_embed.data.copy_(pos_embed.unsqueeze(0))
+
     
     def get_model_name(self):
         return f"ViT-B{self.depth}-TensorToTensor"
     
     def forward(self, x):
-        # Get input shape for later reconstruction
         B, C, H, W = x.shape
-        
-        # Check if the input size matches what the model was initialized with
-        # If not, we need to regenerate the positional embeddings
         h_patches = H // self.patch_size
         w_patches = W // self.patch_size
         num_patches = h_patches * w_patches
         expected_patches = (self.image_size // self.patch_size) ** 2
         
         if num_patches != expected_patches:
-            # Update image_size to match the actual input dimensions
             self.image_size = max(H, W)
-            # Regenerate positional embeddings for the new size
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, self.embed_dim))
-            self._init_pos_embed()
+            device = self.cls_token.device  # Get the model's device
+            self.pos_embed = nn.Parameter(
+                torch.zeros(1, num_patches + 1, self.embed_dim, device=device)
+            )
+            self._init_pos_embed()  
+    
         
         # Create patch embeddings
         x = self.patch_embed(x)  # (B, num_patches, embed_dim)
