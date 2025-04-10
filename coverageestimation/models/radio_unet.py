@@ -26,17 +26,16 @@ class RadioUNet(BaseTensorCNN):
             phase: "firstU" or "secondU" - controls which part of the W-Net is trainable
         """
         self.phase = phase
-        # Initialize parent class first to avoid recursion issues
+        # Initialize parent class
         super(RadioUNet, self).__init__(input_channels, output_channels)
         
     def _create_model(self):
         """
         Create the entire model architecture.
-        Returns self because the model is built directly in this class
-        rather than creating a separate model object.
         """
-        # Instead of returning self, we'll return a simple identity module
-        # That makes BaseTensorCNN's forward call use our forward method
+        # Initialize all layers immediately, not lazily
+        self._init_layers()
+        # Return identity since we're implementing forward separately
         return nn.Identity()
         
     def get_model_name(self):
@@ -55,12 +54,6 @@ class RadioUNet(BaseTensorCNN):
               - output1 is the output from the first U-Net
               - output2 is the final output from the W-Net
         """
-        # We override the parent's forward method, which would have called self.model(x)
-        # Create layers when the model is first run if they don't exist
-        if not hasattr(self, '_initialized_layers'):
-            self._init_layers()
-            self._initialized_layers = True
-            
         input0 = x[:, 0:self.input_channels, :, :]
         
         if self.phase == "firstU":

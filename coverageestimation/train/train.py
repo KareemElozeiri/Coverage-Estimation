@@ -34,7 +34,14 @@ class Trainer:
             
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
-            loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
+            
+            # Handle RadioUNet's output format (it returns a list of two outputs)
+            if isinstance(outputs, list):
+                # Use the second output (final output) for loss calculation
+                loss = self.criterion(outputs[1], targets)/self.criterion(targets, 0*targets)
+            else:
+                loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
+                
             loss.backward()
             self.optimizer.step()
             
@@ -50,7 +57,13 @@ class Trainer:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
                 
                 outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
+                
+                # Handle RadioUNet's output format (it returns a list of two outputs)
+                if isinstance(outputs, list):
+                    # Use the second output (final output) for loss calculation
+                    loss = self.criterion(outputs[1], targets)/self.criterion(targets, 0*targets)
+                else:
+                    loss = self.criterion(outputs, targets)/self.criterion(targets, 0*targets)
                 
                 total_loss += loss.item()
         
