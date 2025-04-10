@@ -88,10 +88,6 @@ class ViTTensorToTensor(BaseTensorCNN):
         self.dropout = dropout
         super(ViTTensorToTensor, self).__init__(input_channels, output_channels)
         
-        # Initialize the positional embedding with sine-cosine positional encoding
-        with torch.no_grad():
-            self._init_pos_embed()
-        
     def _create_model(self):
         # Calculate number of patches
         assert self.image_size % self.patch_size == 0, "Image dimensions must be divisible by patch size"
@@ -102,6 +98,9 @@ class ViTTensorToTensor(BaseTensorCNN):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, self.embed_dim))
         self.pos_drop = nn.Dropout(self.dropout)
+        
+        # Initialize positional embedding with sine-cosine positional encoding
+        self._init_pos_embed()
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
@@ -133,16 +132,13 @@ class ViTTensorToTensor(BaseTensorCNN):
     
     def _init_pos_embed(self):
         # Initialize positional embeddings with sinusoidal position encoding
-        # This needs to be called after pos_embed is defined in _create_model
-        if not hasattr(self, 'pos_embed'):
-            # Calculate number of patches
-            num_patches = (self.image_size // self.patch_size) ** 2
-            # Create pos_embed attribute if it doesn't exist yet
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, self.embed_dim))
-            
-        position = torch.arange(0, self.pos_embed.shape[1]).unsqueeze(1)
+        # This is called after pos_embed is defined in _create_model
+        num_patches = (self.image_size // self.patch_size) ** 2
+        num_positions = num_patches + 1  # Add 1 for cls token
+        
+        position = torch.arange(0, num_positions).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, self.embed_dim, 2) * -(np.log(10000.0) / self.embed_dim))
-        pos_embed = torch.zeros_like(self.pos_embed[0])
+        pos_embed = torch.zeros(num_positions, self.embed_dim)
         pos_embed[:, 0::2] = torch.sin(position * div_term)
         pos_embed[:, 1::2] = torch.cos(position * div_term)
         self.pos_embed.data.copy_(pos_embed.unsqueeze(0))
@@ -153,6 +149,20 @@ class ViTTensorToTensor(BaseTensorCNN):
     def forward(self, x):
         # Get input shape for later reconstruction
         B, C, H, W = x.shape
+        
+        # Check if the input size matches what the model was initialized with
+        # If not, we need to regenerate the positional embeddings
+        h_patches = H // self.patch_size
+        w_patches = W // self.patch_size
+        num_patches = h_patches * w_patches
+        expected_patches = (self.image_size // self.patch_size) ** 2
+        
+        if num_patches != expected_patches:
+            # Update image_size to match the actual input dimensions
+            self.image_size = max(H, W)
+            # Regenerate positional embeddings for the new size
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, self.embed_dim))
+            self._init_pos_embed()
         
         # Create patch embeddings
         x = self.patch_embed(x)  # (B, num_patches, embed_dim)
@@ -175,10 +185,9 @@ class ViTTensorToTensor(BaseTensorCNN):
         x = x[:, 1:]  # (B, num_patches, embed_dim)
         
         # Reshape sequence back to image-like structure
-        h = w = H // self.patch_size
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
+        x = rearrange(x, 'b (h w) c -> b c h w', h=h_patches, w=w_patches)
         
-        # Upsample to original resolution using transposed convolution
+        # Upsample to original resolution using bilinear upsampling
         x = nn.Upsample(scale_factor=self.patch_size, mode='bilinear', align_corners=False)(x)
         
         # Apply decoder
