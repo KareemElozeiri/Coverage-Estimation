@@ -26,7 +26,7 @@ class CoverageMapDataset(Dataset):
         transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5].lstrip("./"))
         transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6].lstrip("./"))
         rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9].lstrip("./"))
-        path_gain_map_path = os.path.join(self.root_dir, re.sub(r'_(\d+)$', r'\1', self.data_frame.iloc[idx, 10].lstrip("./")))
+        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10].lstrip("./"))
         sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11].lstrip("./"))
 
         base_map = Image.open(base_map_path)
@@ -36,7 +36,11 @@ class CoverageMapDataset(Dataset):
         transmitter_height = Image.open(transmitter_height_path)
         rss_map = Image.open(rss_map_path)
         sinr_map = Image.open(sinr_map_path)
-        path_gain_map = Image.open(path_gain_map_path)
+        try:
+            path_gain_map = Image.open(path_gain_map_path)
+        except FileNotFoundError:
+            alt_path = path_gain_map_path.replace("path_gain_", "path_gain")
+            path_gain_map = Image.open(alt_path)
 
         if self.transform:
             base_map = self.transform(base_map)
