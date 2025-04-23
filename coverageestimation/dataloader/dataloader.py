@@ -6,10 +6,11 @@ from PIL import Image
 from torchvision import transforms
 
 class CoverageMapDataset(Dataset):
-    def __init__(self, xlsx_file, root_dir, transform=None):
+    def __init__(self, xlsx_file, root_dir, transform=None, mode="rss"):
         self.data_frame = pd.read_excel(xlsx_file)
         self.root_dir = root_dir
         self.transform = transform
+        self.mode = mode
 
     def __len__(self):
         return len(self.data_frame)
@@ -20,39 +21,50 @@ class CoverageMapDataset(Dataset):
 
         base_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 0])
         frequency_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 1])
-        #terrain_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 2])
-        azimuth_angles_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 3])
-        transmitter_tilt_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 4])
+        power_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 2])
         transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5])
         transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6])
-        antenna_pattern_vertical_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 7])
-        coverage_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9])
+        rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9])
+        sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10])
+        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11])
 
         base_map = Image.open(base_map_path)
         frequency = Image.open(frequency_path)
-        #terrain = Image.open(terrain_path)
-        azimuth_angles = Image.open(azimuth_angles_path)
-        transmitter_tilt = Image.open(transmitter_tilt_path)
+        power = Image.open(power_path)
         transmitter_locations = Image.open(transmitter_locations_path)
         transmitter_height = Image.open(transmitter_height_path)
-        antenna_pattern_vertical = Image.open(antenna_pattern_vertical_path)
-        coverage_map = Image.open(coverage_map_path)
+        rss_map = Image.open(rss_map_path)
+        sinr_map = Image.open(sinr_map_path)
+        path_gain_map = Image.open(path_gain_map_path)
 
         if self.transform:
             base_map = self.transform(base_map)
             frequency = self.transform(frequency)
-            #terrain = self.transform(terrain)
-            azimuth_angles = self.transform(azimuth_angles)
-            transmitter_tilt = self.transform(transmitter_tilt)
+            power = self.transform(power)
             transmitter_locations = self.transform(transmitter_locations)
             transmitter_height = self.transform(transmitter_height)
-            antenna_pattern_vertical = self.transform(antenna_pattern_vertical)
-            coverage_map = self.transform(coverage_map)
+            rss_map = self.transform(rss_map)
+            sinr_map = self.transform(sinr_map)
+            path_gain_map = self.transform(path_gain_map)
 
-        input_tensor = torch.cat((base_map, frequency, azimuth_angles, 
-                                  transmitter_tilt, transmitter_locations, transmitter_height, antenna_pattern_vertical), dim=0)
+        input_tensor = torch.cat((base_map, 
+                                  frequency, 
+                                  power,
+                                  transmitter_locations,
+                                  transmitter_height), dim=0)
+        
+        if self.mode == "rss":
+            return input_tensor, rss_map
+        elif self.mode=="sinr":
+            return input_tensor, sinr_map
+        elif self.mode=="path_gain":
+            return input_tensor, path_gain_map
+        
+        output_tensor = torch.cat([rss_map,
+                                   path_gain_map], dim=0)
+        
 
-        return input_tensor, coverage_map
+        return input_tensor, output_tensor
 
 def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4):
     transform = transforms.Compose([
