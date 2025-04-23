@@ -19,14 +19,14 @@ class CoverageMapDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        base_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 0])
-        frequency_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 1])
-        power_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 2])
-        transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5])
-        transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6])
-        rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9])
-        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10])
-        sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11])
+        base_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 0].lstrip("./"))
+        frequency_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 1].lstrip("./"))
+        power_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 2].lstrip("./"))
+        transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5].lstrip("./"))
+        transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6].lstrip("./"))
+        rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9].lstrip("./"))
+        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10].lstrip("./"))
+        sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11].lstrip("./"))
 
         base_map = Image.open(base_map_path)
         frequency = Image.open(frequency_path)
