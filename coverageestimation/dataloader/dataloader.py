@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms
+import re
 
 class CoverageMapDataset(Dataset):
     def __init__(self, xlsx_file, root_dir, transform=None, mode="rss"):
@@ -25,7 +26,7 @@ class CoverageMapDataset(Dataset):
         transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5].lstrip("./"))
         transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6].lstrip("./"))
         rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9].lstrip("./"))
-        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10].lstrip("./"))
+        path_gain_map_path = os.path.join(self.root_dir, re.sub(r'_(\d+)$', r'\1', self.data_frame.iloc[idx, 10].lstrip("./")))
         sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11].lstrip("./"))
 
         base_map = Image.open(base_map_path)
