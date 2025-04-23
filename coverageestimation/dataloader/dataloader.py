@@ -25,8 +25,8 @@ class CoverageMapDataset(Dataset):
         transmitter_locations_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 5])
         transmitter_height_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 6])
         rss_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 9])
-        sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10])
-        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11])
+        path_gain_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 10])
+        sinr_map_path = os.path.join(self.root_dir, self.data_frame.iloc[idx, 11])
 
         base_map = Image.open(base_map_path)
         frequency = Image.open(frequency_path)
