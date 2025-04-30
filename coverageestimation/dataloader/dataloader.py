@@ -11,6 +11,7 @@ class CoverageMapDataset(Dataset):
         self.data_frame = pd.read_excel(xlsx_file)
         self.root_dir = root_dir
         self.transform = transform
+        self.colored_transform = colored_transform
         self.mode = mode
 
     def __len__(self):
