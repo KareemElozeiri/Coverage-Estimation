@@ -72,23 +72,7 @@ class CoverageMapDataset(Dataset):
 
         return input_tensor, output_tensor
 
-class SaturationCollapseToRGB:
-    def __init__(self, reduction='mean'):
-        assert reduction in ['mean', 'max'], "Use 'mean' or 'max'"
-        self.reduction = reduction
 
-    def __call__(self, tensor):
-        # tensor: [3, H, W, S]
-        if self.reduction == 'mean':
-            tensor = tensor.mean(dim=-1)
-        elif self.reduction == 'max':
-            tensor, _ = tensor.max(dim=-1)
-
-        # Now tensor is [3, H, W], assume it's in HSV and convert to RGB
-        image = transforms.functional.to_pil_image(tensor)
-        image = image.convert("RGB")
-        return image
-    
 def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4, mode="rss"):
     transform = transforms.Compose([
         transforms.Resize((512, 512)), 
@@ -98,7 +82,7 @@ def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers
 
     colored_transform = transforms.Compose([
         transforms.Resize((512, 512)),
-        SaturationCollapseToRGB(reduction='mean'),
+        transforms.Lambda(lambda img: img.convert("RGB")),
         transforms.ToTensor(),
     ])
 
