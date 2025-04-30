@@ -75,13 +75,13 @@ class CoverageMapDataset(Dataset):
 
 def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4, mode="rss"):
     transform = transforms.Compose([
-        transforms.Resize((512, 512)), 
+        transforms.Resize((256, 256)), 
         transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
     ])
 
     colored_transform = transforms.Compose([
-        transforms.Resize((512, 512)),
+        transforms.Resize((256, 256)),
         transforms.Lambda(lambda img: img.convert("RGB")),
         transforms.ToTensor(),
     ])
