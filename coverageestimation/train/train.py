@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime
 import optuna
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, criterion, optimizer, device, 
-                 scheduler=None, num_epochs=100, early_stopping_patience=10):
+                 scheduler=None, num_epochs=100, early_stopping_patience=10, 
+                 gradient_clip_val=1.0, min_delta=1e-4):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -20,11 +22,14 @@ class Trainer:
         self.scheduler = scheduler
         self.num_epochs = num_epochs
         self.early_stopping_patience = early_stopping_patience
+        self.gradient_clip_val = gradient_clip_val
+        self.min_delta = min_delta  # Minimum change in validation loss to be considered as improvement
         
         self.train_losses = []
         self.val_losses = []
         self.best_val_loss = float('inf')
         self.epochs_without_improvement = 0
+        self.best_model_state = None
 
     def train_epoch(self):
         self.model.train()
@@ -49,6 +54,10 @@ class Trainer:
             
             # Backpropagate
             loss.backward()
+            
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_val)
+            
             self.optimizer.step()
             
             total_loss += loss.item()
@@ -94,15 +103,23 @@ class Trainer:
             if self.scheduler:
                 self.scheduler.step(val_loss)
             
-            if val_loss < self.best_val_loss:
+            # Check if validation loss improved
+            if val_loss < (self.best_val_loss - self.min_delta):
                 self.best_val_loss = val_loss
+                self.best_model_state = self.model.state_dict().copy()
                 self.save_model('best_model.pth')
                 self.epochs_without_improvement = 0
+                print(f"Validation loss improved to {val_loss:.4f}")
             else:
                 self.epochs_without_improvement += 1
+                print(f"No improvement for {self.epochs_without_improvement} epochs")
             
             if self.epochs_without_improvement >= self.early_stopping_patience:
                 print(f"Early stopping triggered after {epoch+1} epochs")
+                print(f"Best validation loss: {self.best_val_loss:.4f}")
+                # Restore best model
+                if self.best_model_state is not None:
+                    self.model.load_state_dict(self.best_model_state)
                 break
         
         self.plot_losses()
@@ -157,7 +174,9 @@ def objective(trial, model_class, train_loader, val_loader, device):
     
     return trainer.train()
 
-def train_model(model_class, train_loader, val_loader, in_channel=6, out_channel=1, epochs=10, n_trials=100, use_optuna=False):
+def train_model(model_class, train_loader, val_loader, in_channel=6, out_channel=1, 
+                epochs=10, n_trials=100, use_optuna=False, 
+                learning_rate=0.001, optimizer_class=optim.Adam):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if use_optuna:
@@ -171,16 +190,22 @@ def train_model(model_class, train_loader, val_loader, in_channel=6, out_channel
         for key, value in trial.params.items():
             print("    {}: {}".format(key, value))
         
-        # Train final model with best hyperparameters
         best_lr = trial.params['lr']
         best_optimizer = getattr(optim, trial.params['optimizer'])
     else:
-        best_lr = 0.001
-        best_optimizer = optim.Adam
+        best_lr = learning_rate
+        best_optimizer = optimizer_class
     
     final_model = model_class(input_channels=in_channel, output_channels=out_channel).to(device)
     final_optimizer = best_optimizer(final_model.parameters(), lr=best_lr)
-    final_scheduler = optim.lr_scheduler.ReduceLROnPlateau(final_optimizer, mode='min', factor=0.1, patience=5)
+    
+    # Use CosineAnnealingWarmRestarts instead of ReduceLROnPlateau
+    final_scheduler = CosineAnnealingWarmRestarts(
+        final_optimizer,
+        T_0=5,  # Restart every 5 epochs
+        T_mult=2,  # Double the restart interval after each restart
+        eta_min=1e-6  # Minimum learning rate
+    )
     
     final_trainer = Trainer(
         model=final_model,
@@ -191,7 +216,8 @@ def train_model(model_class, train_loader, val_loader, in_channel=6, out_channel
         device=device,
         scheduler=final_scheduler,
         num_epochs=epochs,
-        early_stopping_patience=10
+        early_stopping_patience=10,
+        gradient_clip_val=1.0  # Add gradient clipping
     )
     
     final_trainer.train()
