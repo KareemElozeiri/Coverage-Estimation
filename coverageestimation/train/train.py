@@ -44,6 +44,7 @@ class Trainer:
                 output_to_use = outputs
                 
             # Compute normalized loss
+            #TODO: exclude buildings from calculations
             loss = self.criterion(output_to_use, targets)/self.criterion(targets, 0*targets)
             
             # Backpropagate

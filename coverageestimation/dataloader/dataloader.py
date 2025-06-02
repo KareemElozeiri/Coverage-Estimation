@@ -7,12 +7,13 @@ from torchvision import transforms
 import re
 
 class CoverageMapDataset(Dataset):
-    def __init__(self, xlsx_file, root_dir, transform=None, colored_transform=None, mode="rss"):
+    def __init__(self, xlsx_file, root_dir, transform=None, colored_transform=None, mode="rss", render_mode="gray_scale"):
         self.data_frame = pd.read_excel(xlsx_file)
         self.root_dir = root_dir
         self.transform = transform
         self.colored_transform = colored_transform
         self.mode = mode
+        self.render_mode = render_mode
 
     def __len__(self):
         return len(self.data_frame)
@@ -49,9 +50,15 @@ class CoverageMapDataset(Dataset):
             power = self.transform(power)
             transmitter_locations = self.transform(transmitter_locations)
             transmitter_height = self.transform(transmitter_height)
-            rss_map = self.colored_transform(rss_map)
-            sinr_map = self.colored_transform(sinr_map)
-            path_gain_map = self.colored_transform(path_gain_map)
+            if self.render_mode != "gray_scale":
+                rss_map = self.colored_transform(rss_map)
+                sinr_map = self.colored_transform(sinr_map)
+                path_gain_map = self.colored_transform(path_gain_map)
+            else:
+                rss_map = self.transform(rss_map)
+                sinr_map = self.transform(sinr_map)
+                path_gain_map = self.transform(path_gain_map)
+
 
         input_tensor = torch.cat((base_map, 
                                   frequency, 
@@ -73,7 +80,7 @@ class CoverageMapDataset(Dataset):
         return input_tensor, output_tensor
 
 
-def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4, mode="rss"):
+def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers=4, render_mode="gray_scale", mode="rss"):
     transform = transforms.Compose([
         transforms.Resize((256, 256)), 
         transforms.Grayscale(num_output_channels=1),
@@ -86,7 +93,7 @@ def get_dataloader(xlsx_file, root_dir, batch_size=32, shuffle=True, num_workers
         transforms.ToTensor(),
     ])
 
-    dataset = CoverageMapDataset(xlsx_file=xlsx_file, root_dir=root_dir, transform=transform, colored_transform=colored_transform, mode=mode)
+    dataset = CoverageMapDataset(xlsx_file=xlsx_file, root_dir=root_dir, transform=transform, colored_transform=colored_transform, mode=mode, render_mode=render_mode)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     
     return dataloader
