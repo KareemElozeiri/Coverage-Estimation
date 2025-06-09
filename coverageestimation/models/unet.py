@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -66,79 +67,91 @@ class OutConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class UNet8Level(BaseTensorCNN):
-    def __init__(self, input_channels, output_channels, bilinear=False):
+class UNet(BaseTensorCNN):
+    def __init__(self, input_channels, output_channels, bilinear=False, base_channels=32, max_depth=5):
+        """
+        Memory-efficient UNet with configurable depth and base channels
+        
+        Args:
+            input_channels: Number of input channels
+            output_channels: Number of output channels  
+            bilinear: Use bilinear upsampling instead of transpose convolution
+            base_channels: Base number of channels (default 32 instead of 64)
+            max_depth: Maximum depth of the network (default 5 instead of 8)
+        """
         self.bilinear = bilinear
-        super(UNet8Level, self).__init__(input_channels, output_channels)
+        self.base_channels = base_channels
+        self.max_depth = max_depth
+        super(UNet, self).__init__(input_channels, output_channels)
 
     def _create_model(self):
-        # Define the channel progression for 8 levels
-        # Start with 64 channels and double at each level
-        channels = [64, 128, 256, 512, 1024, 2048, 4096, 8192]
+        # Define the channel progression - much more conservative
+        # Start with base_channels and double at each level up to max_depth
+        channels = [self.base_channels * (2 ** i) for i in range(self.max_depth + 1)]
+        # Cap maximum channels to prevent excessive memory usage
+        channels = [min(ch, 1024) for ch in channels]
         
-        # Create a sequential container for the U-Net components
-        model = nn.ModuleDict({
+        model_dict = {
             # Input convolution
             'inc': DoubleConv(self.input_channels, channels[0]),
-            
-            # Encoder (downsampling path) - 7 down blocks for 8 levels total
-            'down1': Down(channels[0], channels[1]),
-            'down2': Down(channels[1], channels[2]),
-            'down3': Down(channels[2], channels[3]),
-            'down4': Down(channels[3], channels[4]),
-            'down5': Down(channels[4], channels[5]),
-            'down6': Down(channels[5], channels[6]),
-            'down7': Down(channels[6], channels[7]),
-            
-            # Decoder (upsampling path) - 7 up blocks
-            'up1': Up(channels[7], channels[6] // (2 if self.bilinear else 1), self.bilinear),
-            'up2': Up(channels[6], channels[5] // (2 if self.bilinear else 1), self.bilinear),
-            'up3': Up(channels[5], channels[4] // (2 if self.bilinear else 1), self.bilinear),
-            'up4': Up(channels[4], channels[3] // (2 if self.bilinear else 1), self.bilinear),
-            'up5': Up(channels[3], channels[2] // (2 if self.bilinear else 1), self.bilinear),
-            'up6': Up(channels[2], channels[1] // (2 if self.bilinear else 1), self.bilinear),
-            'up7': Up(channels[1], channels[0], self.bilinear),
-            
-            # Output convolution
-            'outc': OutConv(channels[0], self.output_channels)
-        })
+        }
         
-        return model
+        # Encoder (downsampling path)
+        for i in range(self.max_depth):
+            model_dict[f'down{i+1}'] = Down(channels[i], channels[i+1])
+        
+        # Decoder (upsampling path)
+        for i in range(self.max_depth):
+            up_idx = self.max_depth - i
+            in_ch = channels[up_idx]
+            out_ch = channels[up_idx-1] // (2 if self.bilinear else 1)
+            model_dict[f'up{i+1}'] = Up(in_ch, out_ch, self.bilinear)
+        
+        # Output convolution
+        model_dict['outc'] = OutConv(channels[0], self.output_channels)
+        
+        return nn.ModuleDict(model_dict)
 
     def forward(self, x):
+        # Store encoder features for skip connections
+        encoder_features = []
+        
         # Encoder path
-        x1 = self.model['inc'](x)
-        x2 = self.model['down1'](x1)
-        x3 = self.model['down2'](x2)
-        x4 = self.model['down3'](x3)
-        x5 = self.model['down4'](x4)
-        x6 = self.model['down5'](x5)
-        x7 = self.model['down6'](x6)
-        x8 = self.model['down7'](x7)
+        x = self.model['inc'](x)
+        encoder_features.append(x)
+        
+        for i in range(self.max_depth):
+            x = self.model[f'down{i+1}'](x)
+            if i < self.max_depth - 1:  # Don't store the deepest feature
+                encoder_features.append(x)
         
         # Decoder path with skip connections
-        x = self.model['up1'](x8, x7)
-        x = self.model['up2'](x, x6)
-        x = self.model['up3'](x, x5)
-        x = self.model['up4'](x, x4)
-        x = self.model['up5'](x, x3)
-        x = self.model['up6'](x, x2)
-        x = self.model['up7'](x, x1)
+        for i in range(self.max_depth):
+            skip_idx = self.max_depth - 1 - i - 1  # Index for skip connection
+            if skip_idx >= 0:
+                skip_connection = encoder_features[skip_idx]
+                x = self.model[f'up{i+1}'](x, skip_connection)
+                # Clear the skip connection from memory after use
+                encoder_features[skip_idx] = None
+            else:
+                # For the final upsampling, use the first encoder feature
+                x = self.model[f'up{i+1}'](x, encoder_features[0])
+        
+        # Clear encoder features from memory
+        del encoder_features
         
         # Output
         logits = self.model['outc'](x)
         return logits
 
     def get_model_name(self):
-        return "UNet-8Level-TensorToTensor"
+        return f"UNet-{self.max_depth}Level-bc{self.base_channels}"
 
     def use_checkpointing(self):
         """Enable gradient checkpointing to save memory for deep networks"""
         self.model['inc'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['inc'])
-        self.model['down1'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down1'])
-        self.model['down2'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down2'])
-        self.model['down3'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down3'])
-        self.model['down4'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down4'])
-        self.model['down5'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down5'])
-        self.model['down6'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down6'])
-        self.model['down7'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down7'])
+        for i in range(self.max_depth):
+            if f'down{i+1}' in self.model:
+                self.model[f'down{i+1}'] = torch.utils.checkpoint.checkpoint_wrapper(self.model[f'down{i+1}'])
+            if f'up{i+1}' in self.model:
+                self.model[f'up{i+1}'] = torch.utils.checkpoint.checkpoint_wrapper(self.model[f'up{i+1}'])
