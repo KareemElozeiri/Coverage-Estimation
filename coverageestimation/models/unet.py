@@ -66,66 +66,67 @@ class OutConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class UNet(BaseTensorCNN):
+class UNet8Level(BaseTensorCNN):
     def __init__(self, input_channels, output_channels, bilinear=False):
         self.bilinear = bilinear
-        super(UNet, self).__init__(input_channels, output_channels)
+        super(UNet8Level, self).__init__(input_channels, output_channels)
 
     def _create_model(self):
         # Define the channel progression for 8 levels
         # Start with 64 channels and double at each level
         channels = [64, 128, 256, 512, 1024, 2048, 4096, 8192]
         
-        # Input convolution
-        self.inc = DoubleConv(self.input_channels, channels[0])
+        # Create a sequential container for the U-Net components
+        model = nn.ModuleDict({
+            # Input convolution
+            'inc': DoubleConv(self.input_channels, channels[0]),
+            
+            # Encoder (downsampling path) - 7 down blocks for 8 levels total
+            'down1': Down(channels[0], channels[1]),
+            'down2': Down(channels[1], channels[2]),
+            'down3': Down(channels[2], channels[3]),
+            'down4': Down(channels[3], channels[4]),
+            'down5': Down(channels[4], channels[5]),
+            'down6': Down(channels[5], channels[6]),
+            'down7': Down(channels[6], channels[7]),
+            
+            # Decoder (upsampling path) - 7 up blocks
+            'up1': Up(channels[7], channels[6] // (2 if self.bilinear else 1), self.bilinear),
+            'up2': Up(channels[6], channels[5] // (2 if self.bilinear else 1), self.bilinear),
+            'up3': Up(channels[5], channels[4] // (2 if self.bilinear else 1), self.bilinear),
+            'up4': Up(channels[4], channels[3] // (2 if self.bilinear else 1), self.bilinear),
+            'up5': Up(channels[3], channels[2] // (2 if self.bilinear else 1), self.bilinear),
+            'up6': Up(channels[2], channels[1] // (2 if self.bilinear else 1), self.bilinear),
+            'up7': Up(channels[1], channels[0], self.bilinear),
+            
+            # Output convolution
+            'outc': OutConv(channels[0], self.output_channels)
+        })
         
-        # Encoder (downsampling path) - 7 down blocks for 8 levels total
-        self.down1 = Down(channels[0], channels[1])
-        self.down2 = Down(channels[1], channels[2])
-        self.down3 = Down(channels[2], channels[3])
-        self.down4 = Down(channels[3], channels[4])
-        self.down5 = Down(channels[4], channels[5])
-        self.down6 = Down(channels[5], channels[6])
-        self.down7 = Down(channels[6], channels[7])
-        
-        # Decoder (upsampling path) - 7 up blocks
-        factor = 2 if self.bilinear else 1
-        self.up1 = Up(channels[7], channels[6] // factor, self.bilinear)
-        self.up2 = Up(channels[6], channels[5] // factor, self.bilinear)
-        self.up3 = Up(channels[5], channels[4] // factor, self.bilinear)
-        self.up4 = Up(channels[4], channels[3] // factor, self.bilinear)
-        self.up5 = Up(channels[3], channels[2] // factor, self.bilinear)
-        self.up6 = Up(channels[2], channels[1] // factor, self.bilinear)
-        self.up7 = Up(channels[1], channels[0], self.bilinear)
-        
-        # Output convolution
-        self.outc = OutConv(channels[0], self.output_channels)
-        
-        # Return self to work with the base class structure
-        return self
+        return model
 
     def forward(self, x):
         # Encoder path
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x6 = self.down5(x5)
-        x7 = self.down6(x6)
-        x8 = self.down7(x7)
+        x1 = self.model['inc'](x)
+        x2 = self.model['down1'](x1)
+        x3 = self.model['down2'](x2)
+        x4 = self.model['down3'](x3)
+        x5 = self.model['down4'](x4)
+        x6 = self.model['down5'](x5)
+        x7 = self.model['down6'](x6)
+        x8 = self.model['down7'](x7)
         
         # Decoder path with skip connections
-        x = self.up1(x8, x7)
-        x = self.up2(x, x6)
-        x = self.up3(x, x5)
-        x = self.up4(x, x4)
-        x = self.up5(x, x3)
-        x = self.up6(x, x2)
-        x = self.up7(x, x1)
+        x = self.model['up1'](x8, x7)
+        x = self.model['up2'](x, x6)
+        x = self.model['up3'](x, x5)
+        x = self.model['up4'](x, x4)
+        x = self.model['up5'](x, x3)
+        x = self.model['up6'](x, x2)
+        x = self.model['up7'](x, x1)
         
         # Output
-        logits = self.outc(x)
+        logits = self.model['outc'](x)
         return logits
 
     def get_model_name(self):
@@ -133,11 +134,11 @@ class UNet(BaseTensorCNN):
 
     def use_checkpointing(self):
         """Enable gradient checkpointing to save memory for deep networks"""
-        self.inc = torch.utils.checkpoint.checkpoint_wrapper(self.inc)
-        self.down1 = torch.utils.checkpoint.checkpoint_wrapper(self.down1)
-        self.down2 = torch.utils.checkpoint.checkpoint_wrapper(self.down2)
-        self.down3 = torch.utils.checkpoint.checkpoint_wrapper(self.down3)
-        self.down4 = torch.utils.checkpoint.checkpoint_wrapper(self.down4)
-        self.down5 = torch.utils.checkpoint.checkpoint_wrapper(self.down5)
-        self.down6 = torch.utils.checkpoint.checkpoint_wrapper(self.down6)
-        self.down7 = torch.utils.checkpoint.checkpoint_wrapper(self.down7)
+        self.model['inc'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['inc'])
+        self.model['down1'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down1'])
+        self.model['down2'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down2'])
+        self.model['down3'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down3'])
+        self.model['down4'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down4'])
+        self.model['down5'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down5'])
+        self.model['down6'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down6'])
+        self.model['down7'] = torch.utils.checkpoint.checkpoint_wrapper(self.model['down7'])
