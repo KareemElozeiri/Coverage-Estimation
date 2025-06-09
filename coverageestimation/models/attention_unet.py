@@ -58,8 +58,8 @@ class UpConv(nn.Module):
     
     
 class AttentionUNet(BaseTensorCNN):
-    def __init__(self, in_channels=2, out_channels=1):
-        super(AttentionUNet, self).__init__(in_channels,out_channels)
+    def __init__(self, input_channels=2, output_channels=1):
+        super(AttentionUNet, self).__init__(input_channels,output_channels)
 
     def _create_model(self):
         
