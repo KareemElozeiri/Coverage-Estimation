@@ -34,38 +34,38 @@ class Down(nn.Module):
         return self.maxpool_conv(x)
 
 class Up(nn.Module):
-    """Upscaling then double conv"""
-    def __init__(self, in_channels, out_channels, bilinear=True):
+    """Upscaling then double conv with explicit channel handling"""
+    def __init__(self, in_channels, skip_channels, out_channels, bilinear=True):
         super(Up, self).__init__()
-        # in_channels: channels from the deeper layer (to be upsampled)
-        # out_channels: target output channels
-        # After upsampling and concatenation, we need to reduce channels
+        # Explicit channel specification to avoid confusion
+        # in_channels: from deeper layer (will be upsampled)
+        # skip_channels: from skip connection
+        # out_channels: desired output channels
         
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            # No channel reduction during upsampling with bilinear
-            # After concat: in_channels + skip_channels -> out_channels
-            # Assume skip_channels = out_channels for standard UNet symmetry
-            self.conv = DoubleConv(in_channels + out_channels, out_channels)
+            # After upsampling: in_channels
+            # After concatenation: in_channels + skip_channels
+            self.conv = DoubleConv(in_channels + skip_channels, out_channels)
         else:
-            # With transpose conv, we reduce channels during upsampling
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            # After concat: (in_channels // 2) + out_channels -> out_channels
-            self.conv = DoubleConv(in_channels // 2 + out_channels, out_channels)
+            # After transpose conv: in_channels // 2
+            # After concatenation: (in_channels // 2) + skip_channels
+            self.conv = DoubleConv(in_channels // 2 + skip_channels, out_channels)
 
     def forward(self, x1, x2):
         # x1: from deeper layer (to be upsampled)
         # x2: skip connection from encoder
         x1 = self.up(x1)
         
-        # Handle size differences
+        # Handle size differences with proper padding
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
 
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
                         diffY // 2, diffY - diffY // 2])
         
-        # Concatenate skip connection and upsampled features
+        # Concatenate: [batch, skip_channels + upsampled_channels, H, W]
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
 
@@ -79,99 +79,60 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 class UNet(BaseTensorCNN):
-    def __init__(self, input_channels, output_channels, bilinear=False, base_channels=32, max_depth=4):
+    def __init__(self, input_channels, output_channels, bilinear=True, base_channels=64):
         """
-        Memory-efficient UNet with configurable depth and base channels
+        Simple UNet with fixed 4-level depth and explicit channel management
         
         Args:
             input_channels: Number of input channels
             output_channels: Number of output channels  
             bilinear: Use bilinear upsampling instead of transpose convolution
-            base_channels: Base number of channels (default 32)
-            max_depth: Maximum depth of the network (reduced to 4 for memory efficiency)
+            base_channels: Base number of channels (64 is standard)
         """
         self.bilinear = bilinear
         self.base_channels = base_channels
-        self.max_depth = max_depth
         super(UNet, self).__init__(input_channels, output_channels)
 
     def _create_model(self):
-        # More conservative channel progression to avoid memory issues
-        # Channels: [32, 64, 128, 256, 512] for max_depth=4
-        channels = []
-        for i in range(self.max_depth + 1):
-            ch = self.base_channels * (2 ** i)
-            # Cap at 512 to prevent excessive memory usage
-            ch = min(ch, 512)
-            channels.append(ch)
-        
-        print(f"Channel progression: {channels}")
+        # Fixed 4-level UNet with explicit channel counts
+        # This follows the classic UNet paper architecture
+        factor = 2 if self.bilinear else 1
         
         model_dict = nn.ModuleDict()
         
-        # Input convolution
-        model_dict['inc'] = DoubleConv(self.input_channels, channels[0])
+        # Encoder
+        model_dict['inc'] = DoubleConv(self.input_channels, 64)
+        model_dict['down1'] = Down(64, 128)
+        model_dict['down2'] = Down(128, 256)
+        model_dict['down3'] = Down(256, 512)
+        model_dict['down4'] = Down(512, 1024 // factor)
         
-        # Encoder (downsampling path)
-        for i in range(self.max_depth):
-            model_dict[f'down{i+1}'] = Down(channels[i], channels[i+1])
+        # Decoder - explicitly specify all channel counts
+        model_dict['up1'] = Up(1024, 512, 512 // factor, self.bilinear)  # 1024 + 512 -> 512
+        model_dict['up2'] = Up(512, 256, 256 // factor, self.bilinear)   # 512 + 256 -> 256  
+        model_dict['up3'] = Up(256, 128, 128 // factor, self.bilinear)   # 256 + 128 -> 128
+        model_dict['up4'] = Up(128, 64, 64, self.bilinear)              # 128 + 64 -> 64
         
-        # Decoder (upsampling path)
-        # Work backwards: from deepest to shallowest
-        for i in range(self.max_depth):
-            # Decoder level (1-indexed)
-            dec_level = i + 1
-            
-            # Current position in channel array (from deep to shallow)
-            current_ch_idx = self.max_depth - i      # Current deep layer
-            target_ch_idx = self.max_depth - i - 1   # Target shallow layer
-            
-            in_channels = channels[current_ch_idx]    # From deeper layer
-            out_channels = channels[target_ch_idx]    # Target (matches skip connection)
-            
-            print(f"up{dec_level}: {in_channels} -> {out_channels} (skip: {out_channels})")
-            model_dict[f'up{dec_level}'] = Up(in_channels, out_channels, self.bilinear)
-        
-        # Output convolution
-        model_dict['outc'] = OutConv(channels[0], self.output_channels)
+        model_dict['outc'] = OutConv(64, self.output_channels)
         
         return model_dict
 
     def forward(self, x):
-        # Store all encoder features including input
-        encoder_features = []
-        
-        # Initial convolution
+        # Encoder with stored skip connections
         x1 = self.model['inc'](x)
-        encoder_features.append(x1)
+        x2 = self.model['down1'](x1)
+        x3 = self.model['down2'](x2)
+        x4 = self.model['down3'](x3)  
+        x5 = self.model['down4'](x4)
         
-        # Encoder path - store all intermediate features
-        x = x1
-        for i in range(self.max_depth):
-            x = self.model[f'down{i+1}'](x)
-            encoder_features.append(x)
+        # Decoder with skip connections
+        x = self.model['up1'](x5, x4)  # Deepest: 1024 + 512 -> 512
+        x = self.model['up2'](x, x3)   # 512 + 256 -> 256
+        x = self.model['up3'](x, x2)   # 256 + 128 -> 128  
+        x = self.model['up4'](x, x1)   # 128 + 64 -> 64
         
-        # Start decoder with the deepest feature
-        x = encoder_features.pop()  # Remove and use the deepest feature
-        
-        # Decoder path with skip connections
-        for i in range(self.max_depth):
-            dec_level = i + 1
-            # Get the corresponding encoder feature for skip connection
-            skip_connection = encoder_features.pop()  # Work backwards through encoder features
-            x = self.model[f'up{dec_level}'](x, skip_connection)
-        
-        # Output layer
         logits = self.model['outc'](x)
         return logits
 
     def get_model_name(self):
-        return f"UNet-{self.max_depth}Level-bc{self.base_channels}"
-
-    def use_checkpointing(self):
-        """Enable gradient checkpointing to save memory"""
-        for name, module in self.model.named_children():
-            if name != 'outc':  # Don't checkpoint the final output layer
-                self.model[name] = torch.utils.checkpoint.checkpoint_wrapper(module)
-    
-
+        return f"UNet-Classic-{'Bilinear' if self.bilinear else 'TransConv'}"
