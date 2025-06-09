@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,13 +37,17 @@ class Up(nn.Module):
     """Upscaling then double conv"""
     def __init__(self, in_channels, out_channels, bilinear=True):
         super(Up, self).__init__()
-        # If bilinear, use the normal convolutions to reduce the number of channels
+        # in_channels is the number of channels from the previous layer
+        # We need to account for concatenation with skip connection
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+            # After upsampling, we concatenate with skip connection, so input to conv is in_channels + skip_channels
+            # For simplicity, assume skip_channels = out_channels (this works for standard UNet)
+            self.conv = DoubleConv(in_channels + out_channels, out_channels)
         else:
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels)
+            # After transpose conv and concatenation: (in_channels // 2) + out_channels
+            self.conv = DoubleConv(in_channels // 2 + out_channels, out_channels)
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
@@ -85,8 +88,7 @@ class UNet(BaseTensorCNN):
         super(UNet, self).__init__(input_channels, output_channels)
 
     def _create_model(self):
-        # Define the channel progression - much more conservative
-        # Start with base_channels and double at each level up to max_depth
+        # Define the channel progression
         channels = [self.base_channels * (2 ** i) for i in range(self.max_depth + 1)]
         # Cap maximum channels to prevent excessive memory usage
         channels = [min(ch, 1024) for ch in channels]
@@ -102,10 +104,15 @@ class UNet(BaseTensorCNN):
         
         # Decoder (upsampling path)
         for i in range(self.max_depth):
-            up_idx = self.max_depth - i
-            in_ch = channels[up_idx]
-            out_ch = channels[up_idx-1] // (2 if self.bilinear else 1)
-            model_dict[f'up{i+1}'] = Up(in_ch, out_ch, self.bilinear)
+            # Calculate indices for decoder
+            decoder_idx = i + 1
+            encoder_level = self.max_depth - i  # Which encoder level we're at
+            skip_level = encoder_level - 1      # Which encoder level provides skip connection
+            
+            in_channels = channels[encoder_level]   # Channels from deeper layer
+            out_channels = channels[skip_level]     # Target channels (matching skip connection)
+            
+            model_dict[f'up{decoder_idx}'] = Up(in_channels, out_channels, self.bilinear)
         
         # Output convolution
         model_dict['outc'] = OutConv(channels[0], self.output_channels)
@@ -122,23 +129,19 @@ class UNet(BaseTensorCNN):
         
         for i in range(self.max_depth):
             x = self.model[f'down{i+1}'](x)
-            if i < self.max_depth - 1:  # Don't store the deepest feature
-                encoder_features.append(x)
+            encoder_features.append(x)
+        
+        # Take the deepest feature as starting point for decoder
+        x = encoder_features[-1]
         
         # Decoder path with skip connections
         for i in range(self.max_depth):
-            skip_idx = self.max_depth - 1 - i - 1  # Index for skip connection
+            decoder_idx = i + 1
+            skip_idx = self.max_depth - 1 - i  # Index for skip connection
+            
             if skip_idx >= 0:
                 skip_connection = encoder_features[skip_idx]
-                x = self.model[f'up{i+1}'](x, skip_connection)
-                # Clear the skip connection from memory after use
-                encoder_features[skip_idx] = None
-            else:
-                # For the final upsampling, use the first encoder feature
-                x = self.model[f'up{i+1}'](x, encoder_features[0])
-        
-        # Clear encoder features from memory
-        del encoder_features
+                x = self.model[f'up{decoder_idx}'](x, skip_connection)
         
         # Output
         logits = self.model['outc'](x)
@@ -155,3 +158,29 @@ class UNet(BaseTensorCNN):
                 self.model[f'down{i+1}'] = torch.utils.checkpoint.checkpoint_wrapper(self.model[f'down{i+1}'])
             if f'up{i+1}' in self.model:
                 self.model[f'up{i+1}'] = torch.utils.checkpoint.checkpoint_wrapper(self.model[f'up{i+1}'])
+    
+    def print_architecture(self):
+        """Print the architecture for debugging"""
+        channels = [self.base_channels * (2 ** i) for i in range(self.max_depth + 1)]
+        channels = [min(ch, 1024) for ch in channels]
+        
+        print(f"UNet Architecture (depth={self.max_depth}, base_channels={self.base_channels}):")
+        print(f"Input channels: {self.input_channels}")
+        print(f"Channel progression: {channels}")
+        
+        print("\nEncoder:")
+        print(f"  inc: {self.input_channels} -> {channels[0]}")
+        for i in range(self.max_depth):
+            print(f"  down{i+1}: {channels[i]} -> {channels[i+1]}")
+        
+        print("\nDecoder:")
+        for i in range(self.max_depth):
+            decoder_idx = i + 1
+            encoder_level = self.max_depth - i
+            skip_level = encoder_level - 1
+            in_ch = channels[encoder_level]
+            out_ch = channels[skip_level]
+            concat_ch = in_ch + out_ch if not self.bilinear else in_ch + out_ch
+            print(f"  up{decoder_idx}: {in_ch} + {out_ch} (skip) -> {concat_ch} -> {out_ch}")
+        
+        print(f"  outc: {channels[0]} -> {self.output_channels}")
