@@ -47,13 +47,13 @@ class UNet(BaseTensorCNN):
             'pool': nn.MaxPool2d(kernel_size=2, stride=2),
             'bottleneck': ConvBlock(bc*8, bc*16),
             'upconv4': UpConv(bc*16, bc*8),
-            'decoder4': ConvBlock(bc*16, bc*8),
+            'decoder4': ConvBlock(bc*8 + bc*8, bc*8),  # bc*8 from upconv + bc*8 from enc4
             'upconv3': UpConv(bc*8, bc*4),
-            'decoder3': ConvBlock(bc*8, bc*4),
+            'decoder3': ConvBlock(bc*4 + bc*4, bc*4),  # bc*4 from upconv + bc*4 from enc3
             'upconv2': UpConv(bc*4, bc*2),
-            'decoder2': ConvBlock(bc*4, bc*2),
+            'decoder2': ConvBlock(bc*2 + bc*2, bc*2),  # bc*2 from upconv + bc*2 from enc2
             'upconv1': UpConv(bc*2, bc),
-            'decoder1': ConvBlock(bc*2, bc),
+            'decoder1': ConvBlock(bc + bc, bc),        # bc from upconv + bc from enc1
             'final_conv': nn.Conv2d(bc, self.output_channels, kernel_size=1, stride=1, padding=0)
         })
 
