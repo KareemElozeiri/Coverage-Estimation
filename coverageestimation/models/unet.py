@@ -30,7 +30,7 @@ class UpConv(nn.Module):
         return x
 
 class UNet(BaseTensorCNN):
-    def __init__(self, input_channels=2, output_channels=1, base_channels=32):
+    def __init__(self, input_channels=5, output_channels=1, base_channels=32):
         # Reduce base channels to save memory
         self.base_channels = base_channels
         super(UNet, self).__init__(input_channels, output_channels)
@@ -47,13 +47,13 @@ class UNet(BaseTensorCNN):
             'pool': nn.MaxPool2d(kernel_size=2, stride=2),
             'bottleneck': ConvBlock(bc*8, bc*16),
             'upconv4': UpConv(bc*16, bc*8),
-            'decoder4': ConvBlock(bc*8 + bc*8, bc*8),  # bc*8 from upconv + bc*8 from enc4
+            'decoder4': ConvBlock(bc*16, bc*8),  # bc*8 from upconv + bc*8 from skip = bc*16 input
             'upconv3': UpConv(bc*8, bc*4),
-            'decoder3': ConvBlock(bc*4 + bc*4, bc*4),  # bc*4 from upconv + bc*4 from enc3
+            'decoder3': ConvBlock(bc*8, bc*4),   # bc*4 from upconv + bc*4 from skip = bc*8 input
             'upconv2': UpConv(bc*4, bc*2),
-            'decoder2': ConvBlock(bc*2 + bc*2, bc*2),  # bc*2 from upconv + bc*2 from enc2
+            'decoder2': ConvBlock(bc*4, bc*2),   # bc*2 from upconv + bc*2 from skip = bc*4 input
             'upconv1': UpConv(bc*2, bc),
-            'decoder1': ConvBlock(bc + bc, bc),        # bc from upconv + bc from enc1
+            'decoder1': ConvBlock(bc*2, bc),     # bc from upconv + bc from skip = bc*2 input
             'final_conv': nn.Conv2d(bc, self.output_channels, kernel_size=1, stride=1, padding=0)
         })
 
