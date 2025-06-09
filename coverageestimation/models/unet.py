@@ -44,7 +44,7 @@ class Up(nn.Module):
         
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            # After upsampling: in_channels
+            # After upsampling: in_channels (unchanged)
             # After concatenation: in_channels + skip_channels
             self.conv = DoubleConv(in_channels + skip_channels, out_channels)
         else:
@@ -94,24 +94,32 @@ class UNet(BaseTensorCNN):
         super(UNet, self).__init__(input_channels, output_channels)
 
     def _create_model(self):
-        # Fixed 4-level UNet with explicit channel counts
-        # This follows the classic UNet paper architecture
+        # Fixed 4-level UNet with corrected channel calculations
         factor = 2 if self.bilinear else 1
         
         model_dict = nn.ModuleDict()
         
-        # Encoder
-        model_dict['inc'] = DoubleConv(self.input_channels, 64)
-        model_dict['down1'] = Down(64, 128)
-        model_dict['down2'] = Down(128, 256)
-        model_dict['down3'] = Down(256, 512)
-        model_dict['down4'] = Down(512, 1024 // factor)
+        # Encoder - channels double at each level
+        model_dict['inc'] = DoubleConv(self.input_channels, 64)  # 5 -> 64
+        model_dict['down1'] = Down(64, 128)    # 64 -> 128
+        model_dict['down2'] = Down(128, 256)   # 128 -> 256
+        model_dict['down3'] = Down(256, 512)   # 256 -> 512
+        model_dict['down4'] = Down(512, 1024 // factor)  # 512 -> 1024 (or 512 if bilinear)
         
-        # Decoder - explicitly specify all channel counts
-        model_dict['up1'] = Up(1024, 512, 512 // factor, self.bilinear)  # 1024 + 512 -> 512
-        model_dict['up2'] = Up(512, 256, 256 // factor, self.bilinear)   # 512 + 256 -> 256  
-        model_dict['up3'] = Up(256, 128, 128 // factor, self.bilinear)   # 256 + 128 -> 128
-        model_dict['up4'] = Up(128, 64, 64, self.bilinear)              # 128 + 64 -> 64
+        # Decoder - corrected channel calculations
+        # Format: Up(from_deeper, skip_connection, output)
+        if self.bilinear:
+            # Bilinear upsampling preserves channels, so:
+            model_dict['up1'] = Up(512, 512, 512)    # 512 + 512 -> 512
+            model_dict['up2'] = Up(512, 256, 256)    # 512 + 256 -> 256
+            model_dict['up3'] = Up(256, 128, 128)    # 256 + 128 -> 128
+            model_dict['up4'] = Up(128, 64, 64)      # 128 + 64 -> 64
+        else:
+            # Transpose conv halves channels, so:
+            model_dict['up1'] = Up(1024, 512, 512)   # (1024->512) + 512 -> 512
+            model_dict['up2'] = Up(512, 256, 256)    # (512->256) + 256 -> 256
+            model_dict['up3'] = Up(256, 128, 128)    # (256->128) + 128 -> 128
+            model_dict['up4'] = Up(128, 64, 64)      # (128->64) + 64 -> 64
         
         model_dict['outc'] = OutConv(64, self.output_channels)
         
@@ -119,19 +127,19 @@ class UNet(BaseTensorCNN):
 
     def forward(self, x):
         # Encoder with stored skip connections
-        x1 = self.model['inc'](x)
-        x2 = self.model['down1'](x1)
-        x3 = self.model['down2'](x2)
-        x4 = self.model['down3'](x3)  
-        x5 = self.model['down4'](x4)
+        x1 = self.model['inc'](x)     # 5 -> 64
+        x2 = self.model['down1'](x1)  # 64 -> 128
+        x3 = self.model['down2'](x2)  # 128 -> 256
+        x4 = self.model['down3'](x3)  # 256 -> 512
+        x5 = self.model['down4'](x4)  # 512 -> 1024 (or 512 if bilinear)
         
         # Decoder with skip connections
-        x = self.model['up1'](x5, x4)  # Deepest: 1024 + 512 -> 512
+        x = self.model['up1'](x5, x4)  # (1024 or 512) + 512 -> 512
         x = self.model['up2'](x, x3)   # 512 + 256 -> 256
-        x = self.model['up3'](x, x2)   # 256 + 128 -> 128  
+        x = self.model['up3'](x, x2)   # 256 + 128 -> 128
         x = self.model['up4'](x, x1)   # 128 + 64 -> 64
         
-        logits = self.model['outc'](x)
+        logits = self.model['outc'](x)  # 64 -> output_channels
         return logits
 
     def get_model_name(self):
